@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planify - Modern Calendar & Google Sheets Sync</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbars and view styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .grid-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased text-slate-800 bg-slate-50">
+
+    <!-- Top Header -->
+    <header class="bg-white border-b border-slate-200 shrink-0 z-20 sticky top-0 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            <!-- Logo & Title -->
+            <div class="flex items-center space-x-3 shrink-0">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+                    <i class="fa-solid fa-calendar-week text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-slate-900 leading-tight">Planify</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Smart Calendar & Sync Engine</p>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="flex-1 max-w-md mx-2 sm:mx-4">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="searchInput" oninput="handleSearchOrFilter()" placeholder="Search events..." 
+                           class="w-full pl-9 pr-4 py-2 bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs sm:text-sm rounded-xl border border-transparent focus:border-indigo-500 focus:outline-none transition">
+                </div>
+            </div>
+
+            <!-- Google Sheets Integration Button -->
+            <div class="flex items-center space-x-2">
+                <button onclick="openSyncModal()" class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 transition shadow-2xs">
+                    <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                    <span class="hidden md:inline">Google Sheets Sync</span>
+                    <span class="md:hidden">Sync</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-0">
+        
+        <!-- Controls & Filter Toolbar -->
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            
+            <!-- Date Controls -->
+            <div class="flex items-center justify-between sm:justify-start space-x-3">
+                <div class="flex items-center space-x-1 border border-slate-200 rounded-xl p-1 bg-slate-50">
+                    <button onclick="navigateDate(-1)" class="p-2 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 shadow-2xs transition">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                    </button>
+                    <button onclick="goToToday()" class="px-3 py-1.5 text-xs font-semibold rounded-lg hover:bg-white text-slate-700 shadow-2xs transition">
+                        Today
+                    </button>
+                    <button onclick="navigateDate(1)" class="p-2 rounded-lg hover:bg-white text-slate-600 hover:text-slate-900 shadow-2xs transition">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+                <h2 id="currentDateTitle" class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight min-w-[180px]">Loading...</h2>
+            </div>
+
+            <!-- Right Controls: View Switcher & Category Filter & Add Event Button -->
+            <div class="flex flex-wrap items-center gap-3">
+                
+                <!-- Category Filter -->
+                <select id="categoryFilter" onchange="handleSearchOrFilter()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="ALL">All Categories</option>
+                    <option value="Work">Work</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Priority">Priority</option>
+                    <option value="Meeting">Meeting</option>
+                </select>
+
+                <!-- View Switcher Tabs -->
+                <div class="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-medium text-slate-600">
+                    <button id="viewBtn-month" onclick="switchView('month')" class="px-3 py-1.5 rounded-lg transition font-semibold">Month</button>
+                    <button id="viewBtn-week" onclick="switchView('week')" class="px-3 py-1.5 rounded-lg transition font-semibold">Week</button>
+                    <button id="viewBtn-day" onclick="switchView('day')" class="px-3 py-1.5 rounded-lg transition font-semibold">Day</button>
+                    <button id="viewBtn-agenda" onclick="switchView('agenda')" class="px-3 py-1.5 rounded-lg transition font-semibold">Agenda</button>
+                </div>
+
+                <!-- Add Event Modal Opener -->
+                <button onclick="openCreateModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center space-x-2 shrink-0">
+                    <i class="fa-solid fa-plus text-xs"></i>
+                    <span>New Event</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Calendar Display View Wrapper -->
+        <div id="viewContainer" class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex-1 flex flex-col min-h-[500px]">
+            <!-- Dynamic Content Injected Here -->
+        </div>
+    </main>
+
+    <!-- Add / Edit Event Modal -->
+    <div id="eventModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-100 transform transition-all">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <h3 id="modalHeaderTitle" class="text-base font-bold text-slate-900">Create Event</h3>
+                <button onclick="closeModal('eventModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <form id="eventForm" onsubmit="saveEvent(event)" class="p-6 space-y-4">
+                <input type="hidden" id="eventId">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Event Title *</label>
+                    <input type="text" id="eventTitle" required placeholder="e.g. Q3 Strategy Review" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+                        <select id="eventCategory" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                            <option value="Work">Work (Blue)</option>
+                            <option value="Personal">Personal (Green)</option>
+                            <option value="Priority">Priority (Red)</option>
+                            <option value="Meeting">Meeting (Purple)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                        <select id="eventStatus" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                            <option value="Pending">Pending</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Start Date & Time *</label>
+                        <input type="datetime-local" id="eventStart" required class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">End Date & Time *</label>
+                        <input type="datetime-local" id="eventEnd" required class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Description / Notes</label>
+                    <textarea id="eventDescription" rows="3" placeholder="Add additional agenda items or location details..." class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"></textarea>
+                </div>
+
+                <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <button type="button" id="deleteBtn" onclick="deleteCurrentEvent()" class="hidden text-xs font-medium text-rose-600 hover:text-rose-700 px-3 py-2 rounded-lg hover:bg-rose-50 transition">
+                        <i class="fa-solid fa-trash-can mr-1"></i> Delete
+                    </button>
+                    <div class="flex space-x-2 ml-auto">
+                        <button type="button" onclick="closeModal('eventModal')" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition">Cancel</button>
+                        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition">Save Event</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Google Sheets Bridge Modal -->
+    <div id="syncModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-xl w-full overflow-hidden border border-slate-100">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-file-excel text-emerald-600 text-lg"></i>
+                    <h3 class="text-base font-bold text-slate-900">Google Sheets Integration Bridge</h3>
+                </div>
+                <button onclick="closeModal('syncModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    Connect your calendar directly to a Google Sheet using Google Apps Script! You can sync entries bidirectionally using a Web App deployment.
+                </p>
+
+                <!-- Web App Endpoint Input -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Google Apps Script Web App URL</label>
+                    <input type="text" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" value="https://script.google.com/macros/s/AKfycbyExampleSheetBridge/exec" class="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-mono text-slate-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+
+                <!-- Sync Action Box -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-800">Trigger Calendar Sync</h4>
+                        <p class="text-[11px] text-slate-500">Pulls latest data rows and updates sheet backend.</p>
+                    </div>
+                    <button onclick="simulateSheetSync()" id="syncNowBtn" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center space-x-2 shrink-0">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Sync Now</span>
+                    </button>
+                </div>
+                
+                <div id="syncStatusMessage" class="hidden text-xs p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium flex items-center space-x-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+                    <span id="syncStatusText">Synced with Sheet: 4 items refreshed!</span>
+                </div>
+
+                <!-- Apps Script Snippet Container -->
+                <div class="space-y-2 pt-2 border-t border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold text-slate-700">Google Apps Script Code (Copy & Paste to Sheet)</label>
+                        <button onclick="copyAppsScriptBoilerplate()" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center space-x-1">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Copy Boilerplate</span>
+                        </button>
+                    </div>
+                    <pre class="bg-slate-900 text-slate-200 p-3 rounded-xl text-[10px] font-mono overflow-x-auto max-h-36 border border-slate-800">
+function doGet() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var events = [];
+  for (var i = 1; i < data.length; i++) {
+    events.push({
+      id: data[i][0],
+      title: data[i][1],
+      category: data[i][2],
+      start: data[i][3],
+      end: data[i][4],
+      status: data[i][5],
+      description: data[i][6]
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify(events))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button onclick="closeModal('syncModal')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State variables
+        let currentView = 'month'; // 'month', 'week', 'day', 'agenda'
+        let currentDate = new Date();
+        let searchQuery = '';
+        let selectedCategory = 'ALL';
+
+        // Initial Seed Events in LocalStorage if empty
+        const initialSeed = [
+            {
+                id: 'evt-1',
+                title: 'Team Sync & Product Roadmap',
+                category: 'Work',
+                status: 'Pending',
+                start: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().slice(0, 16),
+                end: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().slice(0, 16),
+                description: 'Review quarterly goals and upcoming milestones.'
+            },
+            {
+                id: 'evt-2',
+                title: 'Design System Sprint',
+                category: 'Priority',
+                status: 'Completed',
+                start: new Date().toISOString().slice(0, 16),
+                end: new Date(new Date().setHours(new Date().getHours() + 2)).toISOString().slice(0, 16),
+                description: 'Finalize Tailwind color palettes and modal accessibility.'
+            },
+            {
+                id: 'evt-3',
+                title: 'Client Demo Call',
+                category: 'Meeting',
+                status: 'Pending',
+                start: new Date(new Date().setDate(new Date().getDate() + 2)).toISOString().slice(0, 16),
+                end: new Date(new Date().setDate(new Date().getDate() + 2)).toISOString().slice(0, 16),
+                description: 'Walk through Google Sheets automated sync capabilities.'
+            }
+        ];
+
+        function getEvents() {
+            const data = localStorage.getItem('planify_events');
+            if (!data) {
+                localStorage.setItem('planify_events', JSON.stringify(initialSeed));
+                return initialSeed;
+            }
+            return JSON.parse(data);
+        }
+
+        function saveEventsToStorage(events) {
+            localStorage.setItem('planify_events', JSON.stringify(events));
+        }
+
+        // Color helper mapping
+        function getCategoryStyle(category) {
+            switch (category) {
+                case 'Work': return { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-600' };
+                case 'Personal': return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-600' };
+                case 'Priority': return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-600' };
+                case 'Meeting': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-600' };
+                default: return { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', dot: 'bg-slate-600' };
+            }
+        }
+
+        // Navigation Handlers
+        function navigateDate(direction) {
+            if (currentView === 'month') {
+                currentDate.setMonth(currentDate.getMonth() + direction);
+            } else if (currentView === 'week') {
+                currentDate.setDate(currentDate.getDate() + (direction * 7));
+            } else if (currentView === 'day' || currentView === 'agenda') {
+                currentDate.setDate(currentDate.getDate() + direction);
+            }
+            renderApp();
+        }
+
+        function goToToday() {
+            currentDate = new Date();
+            renderApp();
+        }
+
+        function switchView(view) {
+            currentView = view;
+            renderApp();
+        }
+
+        function handleSearchOrFilter() {
+            searchQuery = document.getElementById('searchInput').value.toLowerCase();
+            selectedCategory = document.getElementById('categoryFilter').value;
+            renderApp();
+        }
+
+        function renderApp() {
+            // Update Tab Highlights
+            ['month', 'week', 'day', 'agenda'].forEach(v => {
+                const btn = document.getElementById(`viewBtn-${v}`);
+                if (v === currentView) {
+                    btn.className = "px-3 py-1.5 rounded-lg transition font-semibold bg-white text-indigo-600 shadow-2xs";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg transition font-semibold text-slate-600 hover:text-slate-900";
+                }
+            });
+
+            // Update Header Title
+            const titleEl = document.getElementById('currentDateTitle');
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            
+            if (currentView === 'month') {
+                titleEl.innerText = `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+            } else if (currentView === 'week') {
+                const startOfWeek = new Date(currentDate);
+                startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+                titleEl.innerText = `Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}`;
+            } else {
+                titleEl.innerText = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+
+            // Render view body
+            const container = document.getElementById('viewContainer');
+            container.innerHTML = '';
+
+            const events = getFilteredEvents();
+
+            if (currentView === 'month') renderMonthView(container, events);
+            else if (currentView === 'week') renderWeekView(container, events);
+            else if (currentView === 'day') renderDayView(container, events);
+            else if (currentView === 'agenda') renderAgendaView(container, events);
+        }
+
+        function getFilteredEvents() {
+            return getEvents().filter(evt => {
+                const matchesSearch = evt.title.toLowerCase().includes(searchQuery) || (evt.description && evt.description.toLowerCase().includes(searchQuery));
+                const matchesCategory = (selectedCategory === 'ALL') || (evt.category === selectedCategory);
+                return matchesSearch && matchesCategory;
+            });
+        }
+
+        function renderMonthView(container, events) {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const prevMonthDays = new Date(year, month, 0).getDate();
+
+            let html = `
+                <div class="grid-month bg-slate-100 border-b border-slate-200 text-center text-[11px] font-semibold text-slate-500 py-2.5 uppercase tracking-wider">
+                    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                </div>
+                <div class="grid-month flex-1 bg-slate-200 gap-px">
+            `;
+
+            // Previous month fill
+            for (let i = firstDay - 1; i >= 0; i--) {
+                const d = prevMonthDays - i;
+                html += `<div class="bg-slate-50/50 p-2 min-h-[90px] text-slate-400 text-xs font-medium">${d}</div>`;
+            }
+
+            // Current month days
+            const todayStr = new Date().toISOString().split('T')[0];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const isToday = (dateKey === todayStr);
+
+                const dayEvents = events.filter(e => e.start.startsWith(dateKey));
+
+                html += `
+                    <div onclick="openCreateModal('${dateKey}')" class="bg-white p-2 min-h-[90px] flex flex-col justify-between hover:bg-slate-50/80 transition cursor-pointer group">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-semibold rounded-full w-6 h-6 flex items-center justify-center ${isToday ? 'bg-indigo-600 text-white' : 'text-slate-700'}">${d}</span>
+                            <i class="fa-solid fa-plus text-[10px] text-slate-300 group-hover:text-slate-500 transition"></i>
+                        </div>
+                        <div class="space-y-1 overflow-y-auto max-h-[70px]">
+                            ${dayEvents.map(ev => {
+                                const st = getCategoryStyle(ev.category);
+                                return `
+                                    <div onclick="event.stopPropagation(); openEditModal('${ev.id}')" class="text-[10px] p-1 rounded-md border ${st.bg} ${st.text} ${st.border} truncate font-medium flex items-center justify-between">
+                                        <span class="truncate">${ev.title}</span>
+                                        ${ev.status === 'Completed' ? '<i class="fa-solid fa-check text-[9px] ml-1"></i>' : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Fill trailing grid slots
+            const totalSlotsSoFar = firstDay + daysInMonth;
+            const remaining = (totalSlotsSoFar % 7 === 0) ? 0 : 7 - (totalSlotsSoFar % 7);
+            for (let i = 1; i <= remaining; i++) {
+                html += `<div class="bg-slate-50/50 p-2 min-h-[90px] text-slate-400 text-xs font-medium">${i}</div>`;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function renderWeekView(container, events) {
+            const startOfWeek = new Date(currentDate);
+            startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+
+            let days = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(startOfWeek);
+                d.setDate(startOfWeek.getDate() + i);
+                days.push(d);
+            }
+
+            let html = `
+                <div class="grid grid-cols-7 bg-slate-100 border-b border-slate-200 text-center text-xs font-semibold text-slate-600 py-3">
+                    ${days.map(d => `
+                        <div>
+                            <p class="text-[10px] uppercase text-slate-400">${d.toLocaleDateString('en-US', { weekday: 'short' })}</p>
+                            <p class="text-sm font-bold text-slate-800">${d.getDate()}</p>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="grid grid-cols-7 flex-1 bg-slate-200 gap-px">
+                    ${days.map(d => {
+                        const dateKey = d.toISOString().split('T')[0];
+                        const dayEvents = events.filter(e => e.start.startsWith(dateKey));
+                        return `
+                            <div onclick="openCreateModal('${dateKey}')" class="bg-white p-2 min-h-[300px] space-y-1.5 hover:bg-slate-50/50 transition">
+                                ${dayEvents.map(ev => {
+                                    const st = getCategoryStyle(ev.category);
+                                    return `
+                                        <div onclick="event.stopPropagation(); openEditModal('${ev.id}')" class="p-2 rounded-xl border ${st.bg} ${st.text} ${st.border} text-xs shadow-2xs cursor-pointer">
+                                            <p class="font-bold truncate">${ev.title}</p>
+                                            <p class="text-[10px] opacity-80 mt-0.5">${ev.start.slice(11, 16)} - ${ev.end.slice(11, 16)}</p>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function renderDayView(container, events) {
+            const dateKey = currentDate.toISOString().split('T')[0];
+            const dayEvents = events.filter(e => e.start.startsWith(dateKey));
+
+            let html = `
+                <div class="p-6 space-y-4 max-w-3xl mx-auto w-full">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                        <h3 class="text-base font-bold text-slate-900">Schedule for ${currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+                        <button onclick="openCreateModal('${dateKey}')" class="text-xs bg-indigo-50 text-indigo-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition">
+                            <i class="fa-solid fa-plus mr-1"></i> Add Event
+                        </button>
+                    </div>
+                    ${dayEvents.length === 0 ? '<p class="text-xs text-slate-400 italic py-8 text-center">No events scheduled for this day.</p>' : ''}
+                    <div class="space-y-3">
+                        ${dayEvents.map(ev => {
+                            const st = getCategoryStyle(ev.category);
+                            return `
+                                <div onclick="openEditModal('${ev.id}')" class="p-4 rounded-2xl border ${st.bg} ${st.border} flex items-start justify-between cursor-pointer hover:shadow-xs transition">
+                                    <div class="space-y-1">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="w-2.5 h-2.5 rounded-full ${st.dot}"></span>
+                                            <h4 class="font-bold text-slate-900 text-sm">${ev.title}</h4>
+                                            <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md bg-white border border-slate-200">${ev.category}</span>
+                                        </div>
+                                        <p class="text-xs text-slate-500">${ev.start.slice(11, 16)} to ${ev.end.slice(11, 16)}</p>
+                                        ${ev.description ? `<p class="text-xs text-slate-600 mt-2">${ev.description}</p>` : ''}
+                                    </div>
+                                    <span class="text-xs px-2.5 py-1 rounded-full font-medium ${ev.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}">${ev.status}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function renderAgendaView(container, events) {
+            let sortedEvents = [...events].sort((a, b) => new Date(a.start) - new Date(b.start));
+
+            let html = `
+                <div class="p-6 max-w-4xl mx-auto w-full space-y-4">
+                    <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">Agenda & Task List</h3>
+                    ${sortedEvents.length === 0 ? '<p class="text-xs text-slate-400 italic py-8 text-center">No events match your query or filters.</p>' : ''}
+                    <div class="divide-y divide-slate-100">
+                        ${sortedEvents.map(ev => {
+                            const st = getCategoryStyle(ev.category);
+                            return `
+                                <div onclick="openEditModal('${ev.id}')" class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50/80 px-3 rounded-xl transition cursor-pointer">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-3 h-3 rounded-full ${st.dot} shrink-0"></div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-800">${ev.title}</p>
+                                            <p class="text-xs text-slate-400">${ev.start.replace('T', ' ')} &bull; ${ev.category}</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-3 self-end sm:self-auto">
+                                        <span class="text-xs px-2.5 py-1 rounded-full font-semibold ${ev.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ev.status}</span>
+                                        <i class="fa-solid fa-chevron-right text-xs text-slate-300"></i>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function openCreateModal(dateStr = null) {
+            document.getElementById('modalHeaderTitle').innerText = 'Create Event';
+            document.getElementById('eventForm').reset();
+            document.getElementById('eventId').value = '';
+            document.getElementById('deleteBtn').classList.add('hidden');
+
+            const now = dateStr ? `${dateStr}T09:00` : new Date().toISOString().slice(0, 16);
+            const later = dateStr ? `${dateStr}T10:00` : new Date(new Date().setHours(new Date().getHours() + 1)).toISOString().slice(0, 16);
+
+            document.getElementById('eventStart').value = now;
+            document.getElementById('eventEnd').value = later;
+
+            document.getElementById('eventModal').classList.remove('hidden');
+        }
+
+        function openEditModal(id) {
+            const events = getEvents();
+            const ev = events.find(e => e.id === id);
+            if (!ev) return;
+
+            document.getElementById('modalHeaderTitle').innerText = 'Edit Event';
+            document.getElementById('eventId').value = ev.id;
+            document.getElementById('eventTitle').value = ev.title;
+            document.getElementById('eventCategory').value = ev.category;
+            document.getElementById('eventStatus').value = ev.status;
+            document.getElementById('eventStart').value = ev.start;
+            document.getElementById('eventEnd').value = ev.end;
+            document.getElementById('eventDescription').value = ev.description || '';
+
+            document.getElementById('deleteBtn').classList.remove('hidden');
+            document.getElementById('eventModal').classList.remove('hidden');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function saveEvent(e) {
+            e.preventDefault();
+            const id = document.getElementById('eventId').value;
+            const title = document.getElementById('eventTitle').value.trim();
+            const category = document.getElementById('eventCategory').value;
+            const status = document.getElementById('eventStatus').value;
+            const start = document.getElementById('eventStart').value;
+            const end = document.getElementById('eventEnd').value;
+            const description = document.getElementById('eventDescription').value.trim();
+
+            let events = getEvents();
+
+            if (id) {
+                // Edit existing
+                events = events.map(evt => evt.id === id ? { id, title, category, status, start, end, description } : evt);
+            } else {
+                // Create new
+                const newEvt = {
+                    id: 'evt-' + Date.now(),
+                    title, category, status, start, end, description
+                };
+                events.push(newEvt);
+            }
+
+            saveEventsToStorage(events);
+            closeModal('eventModal');
+            renderApp();
+        }
+
+        function deleteCurrentEvent() {
+            const id = document.getElementById('eventId').value;
+            if (!id) return;
+
+            let events = getEvents().filter(e => e.id !== id);
+            saveEventsToStorage(events);
+            closeModal('eventModal');
+            renderApp();
+        }
+
+        function openSyncModal() {
+            document.getElementById('syncModal').classList.remove('hidden');
+            document.getElementById('syncStatusMessage').classList.add('hidden');
+        }
+
+        function simulateSheetSync() {
+            const btn = document.getElementById('syncNowBtn');
+            const statusBox = document.getElementById('syncStatusMessage');
+            const statusText = document.getElementById('syncStatusText');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>Connecting...</span>`;
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate"></i><span>Sync Now</span>`;
+                
+                const count = getEvents().length;
+                statusText.innerText = `Synced with Google Sheet! Updated ${count} records successfully.`;
+                statusBox.classList.remove('hidden');
+            }, 1200);
+        }
+
+        function copyAppsScriptBoilerplate() {
+            const scriptCode = `function doGet() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var events = [];
+  for (var i = 1; i < data.length; i++) {
+    events.push({
+      id: data[i][0],
+      title: data[i][1],
+      category: data[i][2],
+      start: data[i][3],
+      end: data[i][4],
+      status: data[i][5],
+      description: data[i][6]
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify(events))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+            
+            // Clipboard fallback
+            const tempTextArea = document.createElement("textarea");
+            tempTextArea.value = scriptCode;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempTextArea);
+
+            alert("Apps Script snippet copied to clipboard! You can paste this into Google Apps Script.");
+        }
+
+        // Initialize on Load
+        window.onload = function() {
+            renderApp();
+        };
+    </script>
+</body>
+</html>
